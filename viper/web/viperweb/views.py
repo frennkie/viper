@@ -688,7 +688,13 @@ class CuckooCheckOrSubmitView(LoginRequiredMixin, TemplateView):
             task_list_response = requests.get(task_list_url)
             if task_list_response.status_code == 200:
                 task_list = task_list_response.json()
-                task_list_filtered = [x for x in task_list["tasks"] if x["sample"]["sha256"] == sha256]
+
+                task_list_filtered = []
+                for x in task_list["tasks"]:
+                    if hasattr(x["sample"], "sha256"):
+                        if x["sample"]["sha256"] == sha256:
+                            task_list_filtered.append(x)
+                            
                 if task_list_filtered:
                     task_list_filtered_sorted = sorted(task_list_filtered, key=itemgetter("added_on"), reverse=True)
                     task_id = task_list_filtered_sorted[0]["id"]
