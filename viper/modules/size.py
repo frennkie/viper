@@ -25,7 +25,7 @@ class SIZE(Module):
 
     def __check_session(self):
         if not __sessions__.is_set():
-            self.log('error', "No open session")
+            self.log('error', "No open session. This command expects a file to be open.")
             return False
         return True
 
@@ -95,7 +95,7 @@ class SIZE(Module):
 
             try:
                 cur_size = os.path.getsize(sample_path)
-            except:
+            except Exception:
                 continue
 
             if self.file_size == cur_size:

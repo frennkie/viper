@@ -51,7 +51,7 @@ class Ida(Module):
             return
 
         if not __sessions__.is_set():
-            self.log('error', "No open session")
+            self.log('error', "No open session. This command expects a file to be open.")
             return
 
         filetype = __sessions__.current.file.type
@@ -86,5 +86,5 @@ class Ida(Module):
 
         try:
             self.open_ida(__sessions__.current.file.path)
-        except:
+        except Exception:
             self.log('error', "Unable to start IDA Pro")

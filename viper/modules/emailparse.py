@@ -59,7 +59,7 @@ class EmailParse(Module):
             # If it came from outlook we may need to trim some lines
             try:
                 email_h = email_h.split(b'Version 2.0\x0d\x0a', 1)[1]
-            except:
+            except Exception:
                 pass
 
             if not email_h:
@@ -91,7 +91,7 @@ class EmailParse(Module):
                     att_size = len(att_data)
                     att_md5 = hashlib.md5(att_data).hexdigest()
                     rows.append([i, att_size, att_md5, att_filename, att_mime])
-                except:
+                except Exception:
                     pass
                 # ASCII
                 try:
@@ -101,7 +101,7 @@ class EmailParse(Module):
                     att_size = len(att_data)
                     att_md5 = hashlib.md5(att_data).hexdigest()
                     rows.append([i, att_size, att_md5, att_filename, att_mime])
-                except:
+                except Exception:
                     pass
             self.log('table', dict(header=header, rows=rows))
 
@@ -121,13 +121,13 @@ class EmailParse(Module):
                         att_filename = ole.openstream(stream_name + '/__substg1.0_3704001F').read()
                         att_filename = att_filename.replace(b'\x00', b'').decode()
                         att_data = ole.openstream(stream_name + '/__substg1.0_37010102').read()
-                    except:
+                    except Exception:
                         pass
                     # ASCII
                     try:
                         att_filename = ole.openstream(stream_name + '/__substg1.0_3704001E').read().decode()
                         att_data = ole.openstream(stream_name + '/__substg1.0_37010102').read()
-                    except:
+                    except Exception:
                         pass
                     if i == att_id:
                         self.log('info', "Switching session to {0}".format(att_filename))
@@ -189,7 +189,7 @@ class EmailParse(Module):
             # Headers
             rows = []
             for x in msg.keys():
-                # Adding Received to ignore list. this has to be handeled separately if there are more then one line
+                # Adding Received to ignore list. this has to be handled separately if there are more then one line
                 if x not in ['Subject', 'From', 'To', 'Date', 'Cc', 'Bcc', 'DKIM-Signature', 'Received']:
                     rows.append([x, string_clean(msg.get(x))])
             for x in msg.get_all('Received'):
@@ -207,7 +207,7 @@ class EmailParse(Module):
                 fields = ['from', 'by', 'timestamp']
             for x in msg.get_all('Received'):
                 x = string_clean(x)
-                cre = re.compile("""
+                cre = re.compile(r"""
                     (?: from \s+ (?P<from>.*?) (?=by|with|id|ID|for|;|$) )?
                     (?: by \s+ (?P<by>.*?) (?=with|id|ID|for|;|$) )?
                     (?: with \s+ (?P<with>.*?) (?=id|ID|for|;|$) )?
@@ -244,7 +244,7 @@ class EmailParse(Module):
                 'Reply-To': email.utils.parseaddr(string_clean(msg.get("Reply-To")))[1],
                 'Return-Path': email.utils.parseaddr(string_clean(msg.get("Return-Path")))[1]
             }
-            if (addr['From'] == ''):
+            if addr['From'] == '':
                 self.log('error', "No From address!")
                 return
             elif addr['Sender'] and (addr['From'] != addr['Sender']):
@@ -261,26 +261,26 @@ class EmailParse(Module):
                 self.log('info', "Unable to run Received by / sender check without dnspython available")
             else:
                 r = msg.get_all('Received')[-1]
-                m = re.search("by\s+(\S*?)(?:\s+\(.*?\))?\s+with", r)
+                m = re.search(r"by\s+(\S*?)(?:\s+\(.*?\))?\s+with", r)
                 if not m:
                     self.log('error', "Received header regex didn't match")
                     return
                 byname = m.group(1)
                 # this can be either a name or an IP
-                m = re.search("(\w+\.\w+|\d+\.\d+\.\d+\.\d+)$", byname)
+                m = re.search(r"(\w+\.\w+|\d+\.\d+\.\d+\.\d+)$", byname)
                 if not m:
                     self.log('error', "Could not find domain or IP in Received by field")
                     return
                 bydomain = m.group(1)
                 domains = [['Received by', bydomain]]
                 # if it's an IP, do the reverse lookup
-                m = re.search("\.\d+$", bydomain)
+                m = re.search(r"\.\d+$", bydomain)
                 if m:
                     bydomain = str(dns.reversename.from_address(bydomain)).strip('.')
                     domains.append(['Received by reverse lookup', bydomain])
                 # if the email has a Sender header, use that
-                if (addr['Sender'] != ""):
-                    m = re.search("(\w+\.\w+)$", addr['Sender'])
+                if addr['Sender'] != "":
+                    m = re.search(r"(\w+\.\w+)$", addr['Sender'])
                     if not m:
                         self.log('error', "Sender header regex didn't match")
                         return
@@ -288,7 +288,7 @@ class EmailParse(Module):
                     domains.append(['Sender', fromdomain])
                 # otherwise, use the From header
                 else:
-                    m = re.search("(\w+\.\w+)$", addr['From'])
+                    m = re.search(r"(\w+\.\w+)$", addr['From'])
                     if not m:
                         self.log('error', "From header regex didn't match")
                         return
@@ -300,7 +300,7 @@ class EmailParse(Module):
                     mx = dns.resolver.query(fromdomain, 'MX')
                     if mx:
                         for rdata in mx:
-                            m = re.search("(\w+\.\w+).$", str(rdata.exchange))
+                            m = re.search(r"(\w+\.\w+).$", str(rdata.exchange))
                             if not m:
                                 self.log('error', "MX domain regex didn't match")
                                 continue
@@ -308,7 +308,7 @@ class EmailParse(Module):
                             if bydomain == m.group(1):
                                 bymatch = True
                     self.log('table', dict(header=['Key', 'Value'], rows=domains))
-                except:
+                except Exception:
                     domains.append(['MX for ' + fromdomain, "not registered in DNS"])
                     self.log('table', dict(header=['Key', 'Value'], rows=domains))
                 if bymatch:
@@ -324,7 +324,7 @@ class EmailParse(Module):
                 return
             for spf in allspf:
                 # self.log('info', string_clean(spf))
-                m = re.search("\s*(\w+)\s+\((.*?):\s*(.*?)\)\s+(.*);", string_clean(spf))
+                m = re.search(r"\s*(\w+)\s+\((.*?):\s*(.*?)\)\s+(.*);", string_clean(spf))
                 if not m:
                     self.log('error', "Received-SPF regex didn't match")
                     return
@@ -367,7 +367,7 @@ class EmailParse(Module):
                         att_md5 = hashlib.md5(att_data).hexdigest()
                         rows.append([i, att_filename, att_mime, att_size, att_md5])
                         att_count += 1
-                    except:
+                    except Exception:
                         pass
                     # ASCII
                     try:
@@ -378,7 +378,7 @@ class EmailParse(Module):
                         att_md5 = hashlib.md5(att_data).hexdigest()
                         rows.append([i, att_filename, att_mime, att_size, att_md5])
                         att_count += 1
-                    except:
+                    except Exception:
                         pass
 
             else:
@@ -391,7 +391,7 @@ class EmailParse(Module):
 
                     if content_type in ('text/plain', 'text/html'):
                         part_content = part.get_payload(decode=True)
-                        for link in re.findall(b'(https?://[^"<>\s]+)', part_content):
+                        for link in re.findall(rb'(https?://[^"<>\s]+)', part_content):
                             if link not in links:
                                 links.append(link.decode())
 
@@ -439,10 +439,10 @@ class EmailParse(Module):
 
         # Start Here
         if not __sessions__.is_set():
-            self.log('error', "No open session")
+            self.log('error', "No open session. This command expects a file to be open.")
             return
 
-        # see if we can load the dns library for MX lookup spoof detecton
+        # see if we can load the dns library for MX lookup spoof detection
         try:
             import dns.resolver
             import dns.reversename
@@ -457,7 +457,7 @@ class EmailParse(Module):
             if not msg:
                 return
             ole_flag = True
-        except:
+        except Exception:
             ole_flag = False
             if sys.version_info < (3, 0):
                 msg = email.message_from_string(__sessions__.current.file.data)

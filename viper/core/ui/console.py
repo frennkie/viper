@@ -20,26 +20,21 @@ from viper.core.plugins import __modules__
 from viper.core.project import __project__, get_project_list
 from viper.core.ui.commands import Commands
 from viper.core.database import Database
-from viper.core.config import Config, console_output
+from viper.core.config import __config__, console_output
 
 log = logging.getLogger('viper')
 
-cfg = Config()
-
-# For python2 & 3 compat, a bit dirty, but it seems to be the least bad one
-try:
-    input = raw_input
-except NameError:
-    pass
+cfg = __config__
+cfg.parse_http_client()
 
 
 def logo():
     print("""         _
         (_)
    _   _ _ ____  _____  ____
-  | | | | |  _ \| ___ |/ ___)
-   \ V /| | |_| | ____| |
-    \_/ |_|  __/|_____)_| v{}
+  | | | | |  _ \\| ___ |/ ___)
+   \\ V /| | |_| | ____| |
+    \\_/ |_|  __/|_____)_| v{}
           |_|
     """.format(__version__))
 
@@ -48,7 +43,7 @@ def logo():
 
     try:
         db.find('all')
-    except:
+    except Exception:
         print_error("You need to update your Viper database. Run 'python update.py -d'")
         sys.exit()
 
@@ -320,7 +315,7 @@ class Console(object):
                             if cfg.modules.store_output and __sessions__.is_set():
                                 try:
                                     Database().add_analysis(__sessions__.current.file.sha256, split_command, module.output)
-                                except:
+                                except Exception:
                                     pass
                             del(module.output[:])
                         else:

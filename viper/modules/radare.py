@@ -22,7 +22,7 @@ class Radare(Module):
         command_line = 'r2 {}'.format(__sessions__.current.file.path)
         try:
             os.system(command_line)
-        except:
+        except Exception:
             self.log('error', "Unable to start Radare2")
 
     def command(self, command):
@@ -31,6 +31,8 @@ class Radare(Module):
 
     def run(self):
         super(Radare, self).run()
+        if self.args is None:
+            return
 
         r2command = ' '.join(self.args.command)
         if not __sessions__.is_set():
@@ -39,7 +41,7 @@ class Radare(Module):
                 self.open_radare()
                 return
             else:
-                self.log('error', "No open session")
+                self.log('error', "No open session. This command expects a file to be open.")
                 return
 
         if not r2command:

@@ -6,12 +6,12 @@ import os
 from os.path import expanduser
 import logging
 
-from viper.core.config import Config
 from viper.core.logger import init_logger
+from viper.core.config import __config__
 
 log = logging.getLogger('viper')
 
-cfg = Config()
+cfg = __config__
 
 
 class Project(object):
@@ -29,7 +29,7 @@ class Project(object):
         if not os.path.exists(self.path):
             os.makedirs(self.path)
 
-        # initalize default log settings
+        # initialize default log settings
         log_file = os.path.join(self.base_path, "viper.log")
         debug_log = False
 
@@ -56,6 +56,12 @@ class Project(object):
 
         self.name = name
         self.path = path
+
+    def close(self):
+        # We "close" it and switch to default, if it isn't default already.
+        if self.name != 'default':
+            self.path = self.base_path
+            self.name = None
 
     def get_path(self):
         if self.path and os.path.exists(self.path):
@@ -85,4 +91,4 @@ def get_project_list(exclude_default=False):
     else:
         project_list.append("default")
 
-    return project_list
+    return sorted(project_list)

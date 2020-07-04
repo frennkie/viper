@@ -2,12 +2,10 @@
 # This file is part of Viper - https://github.com/viper-framework/viper
 # See the file 'LICENSE' for copying permission.
 
-import json
-
 try:
-    from pymisp import MISPEvent, EncodeUpdate
+    from pymisp.tools import make_binary_objects
     HAVE_PYMISP = True
-except:
+except ImportError:
     HAVE_PYMISP = False
 
 from viper.core.session import __sessions__
@@ -31,15 +29,11 @@ def _change_event(self):
         self._dump()
     else:
         if __sessions__.current.misp_event.event.id:
-            event = self.misp.update(__sessions__.current.misp_event.event._json())
+            event = self.misp.update_event(__sessions__.current.misp_event.event)
         else:
-            event = self.misp.add_event(json.dumps(__sessions__.current.misp_event.event, cls=EncodeUpdate))
-        if self._has_error_message(event):
-            return
+            event = self.misp.add_event(__sessions__.current.misp_event.event)
         try:
-            me = MISPEvent()
-            me.load(event)
-            self._check_add(me)
+            self._check_add(event)
         except Exception as e:
             self.log('error', e)
 
@@ -49,12 +43,12 @@ def add_hashes(self):
         if not __sessions__.is_attached_file(True):
             self.log('error', "Not attached to a file, please set the hashes manually.")
             return False
-        __sessions__.current.misp_event.event.add_attribute('filename|md5', '{}|{}'.format(
-            __sessions__.current.file.name, __sessions__.current.file.md5), comment=__sessions__.current.file.tags)
-        __sessions__.current.misp_event.event.add_attribute('filename|sha1', '{}|{}'.format(
-            __sessions__.current.file.name, __sessions__.current.file.sha1), comment=__sessions__.current.file.tags)
-        __sessions__.current.misp_event.event.add_attribute('filename|sha256', '{}|{}'.format(
-            __sessions__.current.file.name, __sessions__.current.file.sha256), comment=__sessions__.current.file.tags)
+        file_obj, bin_obj, sections = make_binary_objects(filepath=__sessions__.current.file.path, standalone=False)
+        __sessions__.current.misp_event.event.add_object(file_obj)
+        if bin_obj:
+            __sessions__.current.misp_event.event.add_object(bin_obj)
+            for s in sections:
+                __sessions__.current.misp_event.event.add_object(s)
     else:
         if self.args.filename:
             if self.args.md5:

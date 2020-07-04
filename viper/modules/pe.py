@@ -69,6 +69,10 @@ class PE(Module):
         parser_comp.add_argument('-s', '--scan', action='store_true', help='Scan the repository for common compile time')
         parser_comp.add_argument('-w', '--window', type=int, help='Specify an optional time window in minutes')
 
+        parser_dn = subparsers.add_parser('dllname', help='Show the dll name if it exists.')
+        parser_dn.add_argument('-a', '--all', action='store_true', help='Retrieve dll name for all stored samples')
+        parser_dn.add_argument('-s', '--scan', action='store_true', help='Scan the repository for common dll name')
+
         parser_peid = subparsers.add_parser('peid', help='Show the PEiD signatures')
         parser_peid.add_argument('-s', '--scan', action='store_true', help='Scan the repository for PEiD signatures')
 
@@ -82,7 +86,7 @@ class PE(Module):
         parser_lang.add_argument('-s', '--scan', action='store_true', help='Scan the repository')
 
         parser_sect = subparsers.add_parser('sections', help='List PE Sections')
-        parser_sect.add_argument('-d', '--dump', metavar='folder', help='Destionation directory to dump all sections in')
+        parser_sect.add_argument('-d', '--dump', metavar='folder', help='Destination directory to dump all sections in')
 
         parser_peh = subparsers.add_parser('pehash', help='Calculate the PEhash and compare them')
         parser_peh.add_argument('-a', '--all', action='store_true', help='Prints the PEhash of all files in the project')
@@ -96,7 +100,7 @@ class PE(Module):
 
     def __check_session(self):
         if not __sessions__.is_set():
-            self.log('error', "No open session")
+            self.log('error', "No open session. This command expects a file to be open.")
             return False
 
         if not self.pe:
@@ -126,7 +130,7 @@ class PE(Module):
                         else:
                             name = symbol.name
                         self.log('item', "{0}: {1}".format(hex(symbol.address), name))
-                except:
+                except Exception:
                     continue
 
     def exports(self):
@@ -155,7 +159,7 @@ class PE(Module):
 
                 try:
                     cur_ep = pefile.PE(sample_path).OPTIONAL_HEADER.AddressOfEntryPoint
-                except:
+                except Exception:
                     continue
 
                 rows.append([sample.md5, sample.name, cur_ep])
@@ -176,7 +180,7 @@ class PE(Module):
 
                 try:
                     cur_ep = pefile.PE(sample_path).OPTIONAL_HEADER.AddressOfEntryPoint
-                except:
+                except Exception:
                     continue
 
                 if cur_ep not in cluster:
@@ -217,7 +221,7 @@ class PE(Module):
 
                 try:
                     cur_ep = pefile.PE(sample_path).OPTIONAL_HEADER.AddressOfEntryPoint
-                except:
+                except Exception:
                     continue
 
                 if ep == cur_ep:
@@ -226,6 +230,71 @@ class PE(Module):
             self.log('info', "Following are samples with AddressOfEntryPoint {0}".format(bold(ep)))
 
             self.log('table', dict(header=['MD5', 'Name'], rows=rows))
+
+    def dllname(self):
+
+        def get_dllname(pe):
+            if hasattr(pe, 'DIRECTORY_ENTRY_EXPORT'):
+                return "{0}".format(pe.DIRECTORY_ENTRY_EXPORT.name)
+
+        if self.args.all:
+            self.log('info', "Retrieving dll name for all stored samples...")
+
+            db = Database()
+            samples = db.find(key='all')
+
+            results = []
+            for sample in samples:
+                sample_path = get_sample_path(sample.sha256)
+
+                try:
+                    cur_pe = pefile.PE(sample_path)
+                    cur_dll_name = get_dllname(cur_pe)
+                except Exception:
+                    continue
+
+                results.append([sample.name, sample.md5, cur_dll_name])
+
+            if len(results) > 0:
+                self.log('table', dict(header=['Name', 'MD5', 'DLL Name'], rows=results))
+
+            return
+
+        if not self.__check_session():
+            return
+
+        self.result_dll_name = get_dllname(self.pe)
+        dll_name = self.result_dll_name
+        self.log('info', "DLL Name: {0}".format(bold(dll_name)))
+
+        if self.args.scan:
+            self.log('info', "Scanning the repository for matching samples...")
+
+            db = Database()
+            samples = db.find(key='all')
+
+            matches = []
+            for sample in samples:
+                if sample.sha256 == __sessions__.current.file.sha256:
+                    continue
+
+                sample_path = get_sample_path(sample.sha256)
+                if not os.path.exists(sample_path):
+                    continue
+
+                try:
+                    cur_pe = pefile.PE(sample_path)
+                    cur_dll_name = get_dllname(cur_pe)
+                except Exception:
+                    continue
+
+                if dll_name == cur_dll_name:
+                    matches.append([sample.name, sample.md5, cur_dll_name])
+
+            self.log('info', "{0} relevant matches found".format(bold(len(matches))))
+
+            if len(matches) > 0:
+                self.log('table', dict(header=['Name', 'MD5', 'DLL Name'], rows=matches))
 
     def compiletime(self):
 
@@ -245,7 +314,7 @@ class PE(Module):
                 try:
                     cur_pe = pefile.PE(sample_path)
                     cur_compile_time = get_compiletime(cur_pe)
-                except:
+                except Exception:
                     continue
 
                 results.append([sample.name, sample.md5, cur_compile_time])
@@ -280,7 +349,7 @@ class PE(Module):
                 try:
                     cur_pe = pefile.PE(sample_path)
                     cur_compile_time = get_compiletime(cur_pe)
-                except:
+                except Exception:
                     continue
 
                 if compile_time == cur_compile_time:
@@ -313,7 +382,7 @@ class PE(Module):
             if not userdb_path:
                 return
 
-            with open(userdb_path, 'rt', encoding='ISO-8859-1') as f:
+            with open(userdb_path, 'r', encoding='UTF-8') as f:
                 sig_data = f.read()
 
             signatures = peutils.SignatureDatabase(data=sig_data)
@@ -358,7 +427,7 @@ class PE(Module):
                 try:
                     cur_pe = pefile.PE(sample_path)
                     cur_peid_matches = get_matches(cur_pe, signatures)
-                except:
+                except Exception:
                     continue
 
                 if peid_matches == cur_peid_matches:
@@ -474,7 +543,7 @@ class PE(Module):
                 # Open PE instance.
                 try:
                     cur_pe = pefile.PE(sample_path)
-                except:
+                except Exception:
                     continue
 
                 # Obtain the list of resources for the current iteration.
@@ -517,7 +586,7 @@ class PE(Module):
 
                 try:
                     cur_imphash = pefile.PE(sample_path).get_imphash()
-                except:
+                except Exception:
                     continue
 
                 if cur_imphash not in cluster:
@@ -562,7 +631,7 @@ class PE(Module):
 
                     try:
                         cur_imphash = pefile.PE(sample_path).get_imphash()
-                    except:
+                    except Exception:
                         continue
 
                     if imphash == cur_imphash:
@@ -607,7 +676,7 @@ class PE(Module):
                 # Open PE instance.
                 try:
                     cur_pe = pefile.PE(sample_path)
-                except:
+                except Exception:
                     continue
 
                 cur_cert_data = get_certificate(cur_pe)
@@ -751,7 +820,7 @@ class PE(Module):
 
         def check_module(iat, match):
             for imp in iat:
-                if imp.find(match) != -1:
+                if imp.find(match.encode('utf-8')) != -1:
                     return True
 
             return False
@@ -800,7 +869,7 @@ class PE(Module):
             return False
 
         def get_strings(content):
-            regexp = b'[\x30-\x39\x41-\x5f\x61-\x7a\-\.:]{4,}'
+            regexp = rb'[\x30-\x39\x41-\x5f\x61-\x7a\-\.:]{4,}'
             return re.findall(regexp, content)
 
         def find_language(iat, sample, content):
@@ -995,7 +1064,7 @@ class PE(Module):
             return
 
         if not HAVE_PEFILE:
-            self.log('error', "Missing dependency, install pefile (`pip install pefile`)")
+            self.log('error', "Missing dependency, install pefile (`pip3 install pefile`)")
             return
 
         if self.args.subname == 'imports':
@@ -1020,3 +1089,5 @@ class PE(Module):
             self.pehash()
         elif self.args.subname == 'entrypoint':
             self.entrypoint()
+        elif self.args.subname == 'dllname':
+            self.dllname()

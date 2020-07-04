@@ -27,6 +27,7 @@ class AndroidPackage(Module):
         self.parser.add_argument('-p', '--perm', action='store_true', help='Show APK permissions')
         self.parser.add_argument('-f', '--file', action='store_true', help='Show APK file list')
         self.parser.add_argument('-u', '--url', action='store_true', help='Show URLs in APK')
+        self.parser.add_argument('-c', '--cert', action='store_true', help='Show certificate fingerprint')
         self.parser.add_argument('-a', '--all', action='store_true', help='Run all options excluding dump')
         self.parser.add_argument('-d', '--dump', metavar='dump_path', help='Extract all items from archive')
 
@@ -138,6 +139,15 @@ class AndroidPackage(Module):
             for url in url_set:
                 self.log('item', url.encode('utf-8'))
 
+        # Show certificate fingerprint
+        def andro_cert(a):
+            rsa_signature_filename = a.get_signature_name()
+            cert = a.get_certificate(rsa_signature_filename)
+
+            self.log('info', "Certificate Fingerprints")
+            self.log('item', "SHA1: " + cert.sha1_fingerprint)
+            self.log('item', "SHA256: " + cert.sha256_fingerprint)
+
         # Decompile and Dump all the methods
         def andro_dump(vm, vmx, dump_path):
             # Export each decompiled method
@@ -191,7 +201,7 @@ class AndroidPackage(Module):
 
         # Check for session
         if not __sessions__.is_set():
-            self.log('error', "No open session")
+            self.log('error', "No open session. This command expects a file to be open.")
             return
 
         # Check for androguard
@@ -215,6 +225,8 @@ class AndroidPackage(Module):
             andro_file(a)
         elif self.args.url:
             andro_url(vm)
+        elif self.args.cert:
+            andro_cert(a)
         elif self.args.all:
             andro_info(a)
             andro_perm(a)

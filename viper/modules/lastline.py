@@ -3,6 +3,7 @@
 # See the file 'LICENSE' for copying permission.
 
 from io import BytesIO
+import logging
 import json
 
 try:
@@ -13,9 +14,12 @@ except ImportError:
 
 from viper.common.abstracts import Module
 from viper.core.session import __sessions__
-from viper.core.config import Config
+from viper.core.config import __config__
 
-cfg = Config()
+log = logging.getLogger('viper')
+
+cfg = __config__
+cfg.parse_http_client(cfg.lastline)
 
 
 class LastLine(Module):
@@ -39,7 +43,7 @@ class LastLine(Module):
             return
 
         if not __sessions__.is_set():
-            self.log('error', "No open session")
+            self.log('error', "No open session. This command expects a file to be open.")
             return
 
         if self.args.submit:
@@ -47,7 +51,8 @@ class LastLine(Module):
                 file = {'file': BytesIO(__sessions__.current.file.data)}
                 data = {'key': cfg.lastline.key, 'api_token': cfg.lastline.token,
                         'push_to_portal_account': cfg.lastline.portal_account}
-                response = requests.post(cfg.lastline.base_url, data=data, files=file)
+                response = requests.post(cfg.lastline.base_url, data=data, files=file,
+                                         proxies=cfg.lastline.proxies, verify=cfg.lastline.verify, cert=cfg.lastline.cert)
                 response = response.json()
 
                 if response['success'] == 0:
@@ -65,7 +70,8 @@ class LastLine(Module):
 
             data = {'key': cfg.lastline.key, 'api_token': cfg.lastline.token, 'md5': __sessions__.current.file.md5,
                     'push_to_portal_account': cfg.lastline.portal_account}
-            response = requests.post(cfg.lastline.base_url, data=data)
+            response = requests.post(cfg.lastline.base_url, data=data,
+                                     proxies=cfg.lastline.proxies, verify=cfg.lastline.verify, cert=cfg.lastline.cert)
             response = response.json()
             if response['success'] == 0:
                 self.log('error', response['error'])

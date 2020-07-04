@@ -11,7 +11,6 @@ import os
 import struct
 import zipfile
 import xml.etree.ElementTree as ET
-import sys
 
 from viper.common.utils import string_clean, string_clean_hex
 from viper.common.abstracts import Module
@@ -21,20 +20,19 @@ from io import BytesIO, open
 
 try:
     import olefile
+    from oletools import msodde
+    from oletools import ooxml
 
-    if sys.version_info >= (3, 0):
-        from oletools.olevba3 import VBA_Parser, VBA_Scanner
-    else:
-        from oletools.olevba import VBA_Parser, VBA_Scanner
+    from oletools.olevba import VBA_Parser, VBA_Scanner
     HAVE_OLE = True
 except ImportError:
     HAVE_OLE = False
 
 try:
-    from xxxswf import xxxswf
-    HAVE_XXXSWF = True
+    from oletools import pyxswf
+    HAVE_PYXSWF = True
 except ImportError:
-    HAVE_XXXSWF = False
+    HAVE_PYXSWF = False
 
 
 class Office(Module):
@@ -50,6 +48,7 @@ class Office(Module):
         self.parser.add_argument('-e', '--export', metavar='dump_path', help='Export all objects')
         self.parser.add_argument('-v', '--vba', action='store_true', help='Analyse Macro Code')
         self.parser.add_argument('-c', '--code', metavar="code_path", help='Export Macro Code to File')
+        self.parser.add_argument('-d', '--dde', action='store_true', help='Get DDE Links')
 
     ##
     # HELPER FUNCTIONS
@@ -62,7 +61,7 @@ class Office(Module):
         self.log('item', 'File Header: {}'.format(header['signature'].decode()))
         if header['compression'] is not None:
             self.log('item', 'Compression Type: {}'.format(header['compression']))
-        if header['compression'] is 'lzma':
+        if header['compression'] == 'lzma':
             self.log('item', 'Compressed Data Length: {}'.format(header['compressed_len']))
         self.log('item', 'File Veader: {}'.format(header['version']))
         self.log('item', 'File Size: {}'.format(header['file_length']))
@@ -75,22 +74,23 @@ class Office(Module):
         self.log('item', 'Frace Count: {}'.format(header['frame_count']))
 
     def detect_flash(self, section):
-        if not HAVE_XXXSWF:
-            self.log('warning', 'Unable to search for Flash objects, requires xxxswf')
+        if not HAVE_PYXSWF:
+            self.log('warning', "Unable to search for Flash objects, requires xxxswf")
             return []
+
         section = BytesIO(section)
-        swf = xxxswf.xxxswf()
-        swf_data = swf.find_swf(section)
+        swf_data = pyxswf.xxxswf.findSWF(section)
         if len(swf_data) == 0:
             return []
 
         full_content = section.getvalue()
         to_return = []
         for index, start in enumerate(swf_data):
-            swf = swf.verify_swf(full_content[start:], 0)
+            swf = pyxswf.xxxswf.verifySWF(full_content[start:], 0)
             if swf:
-                headers = xxxswf.SwfHeader(swf)
+                headers = pyxswf.xxxswf.headerInfo(swf)
                 to_return.append((headers.header, swf))
+
         return to_return
 
     ##
@@ -125,7 +125,7 @@ class Office(Module):
             try:
                 if '\x00Attribu' in ole.openstream(obj).read():
                     has_macro = 'Yes'
-            except:
+            except Exception:
                 pass
 
             rows.append([
@@ -143,17 +143,22 @@ class Office(Module):
 
         ole.close()
 
-    def export(self, ole, export_path):
-        if not os.path.exists(export_path):
+    def safe_makedir(self, path):
+        if not os.path.exists(path):
             try:
-                os.makedirs(export_path)
+                os.makedirs(path)
             except Exception as e:
-                self.log('error', "Unable to create directory at {0}: {1}".format(export_path, e))
-                return
+                self.log('error', "Unable to create directory at {0}: {1}".format(path, e))
+                return False
         else:
-            if not os.path.isdir(export_path):
+            if not os.path.isdir(path):
                 self.log('error', "You need to specify a folder, not a file")
-                return
+                return False
+        return True
+
+    def export(self, ole, export_path):
+        if not self.safe_makedir(export_path):
+            return
 
         for stream in ole.listdir(streams=True, storages=True):
             try:
@@ -362,11 +367,11 @@ class Office(Module):
                 # Save the code to external File
                 if save_path:
                     try:
-                        with open(save_path, 'ab') as out:
+                        with open(save_path, 'a') as out:
                             out.write(vba_code)
                         save = True
-                    except:
-                        self.log('error', "Unable to write to {0}".format(save_path))
+                    except Exception as e:
+                        self.log('error', "Unable to write to {0}: {1}".format(save_path, e))
                         return
             # Print all Tables together
             self.log('info', "AutoRun Macros Found")
@@ -404,7 +409,7 @@ class Office(Module):
             return
 
         if not __sessions__.is_set():
-            self.log('error', "No open session")
+            self.log('error', "No open session. This command expects a file to be open.")
             return
 
         if not HAVE_OLE:
@@ -422,6 +427,25 @@ class Office(Module):
         else:
             MHT_FILE = False
 
+        # Check for old office formats
+        try:
+            doctype = ooxml.get_type(__sessions__.current.file.path)
+            OOXML_FILE = True
+        except Exception:
+            OOXML_FILE = False
+
+        # set defaults
+        XLSX_FILE = False
+        EXCEL_XML_FILE = False
+        DOCX_FILE = False
+        if OOXML_FILE is True:
+            if doctype == ooxml.DOCTYPE_EXCEL:
+                XLSX_FILE = True
+            elif doctype in (ooxml.DOCTYPE_EXCEL_XML, ooxml.DOCTYPE_EXCEL_XML2003):
+                EXCEL_XML_FILE = True
+            elif doctype in (ooxml.DOCTYPE_WORD_XML, ooxml.DOCTYPE_WORD_XML2003):
+                DOCX_FILE = True
+
         # Tests to check for valid Office structures.
         OLE_FILE = olefile.isOleFile(__sessions__.current.file.path)
         XML_FILE = zipfile.is_zipfile(__sessions__.current.file.path)
@@ -432,6 +456,12 @@ class Office(Module):
         elif OLD_XML:
             pass
         elif MHT_FILE:
+            pass
+        elif DOCX_FILE:
+            pass
+        elif EXCEL_XML_FILE:
+            pass
+        elif XLSX_FILE:
             pass
         else:
             self.log('error', "Not a valid office document")
@@ -459,6 +489,22 @@ class Office(Module):
                 self.log('error', "Not an OLE file")
         elif self.args.vba or self.args.code:
             self.parse_vba(self.args.code)
+        elif self.args.dde:
+            self.get_dde(__sessions__.current.file.path)
         else:
             self.log('error', 'At least one of the parameters is required')
             self.usage()
+
+    def get_dde(self, file_path):
+        try:
+            dde_result = msodde.process_file(file_path, 'only dde')
+            dde_fields = [[i + 1, x.strip()] for i, x in enumerate(dde_result.split('\n'))]
+            if (len(dde_fields) == 1) and (dde_fields[0][1] == ''):
+                self.log('info', "No DDE Links Detected.")
+            else:
+                self.log('success', "DDE Links Detected.")
+                header = ['#', 'DDE']
+                self.log('table', dict(header=header,
+                                       rows=dde_fields))
+        except Exception:
+            self.log('error', "Unable to Process File")

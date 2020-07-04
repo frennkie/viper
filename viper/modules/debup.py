@@ -38,7 +38,7 @@ class Debup(Module):
             return
 
         if not __sessions__.is_set():
-            self.log('error', "No open session")
+            self.log('error', "No open session. This command expects a file to be open.")
             return
 
         if not HAVE_OLE:
@@ -80,7 +80,7 @@ class Debup(Module):
             try:
                 k, v = line.split('=')
                 rows.append([k, v[:-1]])  # Strip the \r from v
-            except:
+            except Exception:
                 pass
 
                 # If we opted to switch session then do that
@@ -92,7 +92,7 @@ class Debup(Module):
                 self.log('info', "Switching Session to Embedded File")
                 __sessions__.new(tempName)
                 return
-            except:
+            except Exception:
                 self.log('error', "Unable to Switch Session")
         # Else just print the data
         else:

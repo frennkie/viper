@@ -16,7 +16,7 @@ from viper.common.abstracts import Module
 from viper.core.database import Database
 from viper.core.session import __sessions__
 from viper.core.storage import get_sample_path
-from viper.core.config import Config
+from viper.core.config import __config__
 
 try:
     import yara
@@ -24,7 +24,7 @@ try:
 except ImportError:
     HAVE_YARA = False
 
-cfg = Config()
+cfg = __config__
 
 
 def string_printable(line):
@@ -103,6 +103,14 @@ class YaraScan(Module):
         else:
             filepaths = dict()
             for rule in self._get_rules():
+                # TODO: We pre-compile all rules individually to check whether they are
+                # loadable or not. This is pretty hacky, there must be a better way.
+                try:
+                    yara.compile(rule[1], externals=externals)
+                except yara.SyntaxError as e:
+                    self.log('warning', "Unable to compile rule {0}: {1}".format(rule[1], e))
+                    continue
+
                 filepaths['namespace' + str(rule[0])] = rule[1]
 
             rules = yara.compile(filepaths=filepaths, externals=externals, includes=False)
@@ -146,7 +154,7 @@ class YaraScan(Module):
             # Check if the file exists before running the yara scan.
             if not os.path.exists(entry_path):
                 self.log('error', "The file does not exist at path {0}".format(entry_path))
-                return
+                continue
 
             rows = []
             tag_list = []
@@ -155,10 +163,16 @@ class YaraScan(Module):
             # We need this just for some Yara rules.
             try:
                 ext = os.path.splitext(entry.name)[1]
-            except:
+            except Exception:
                 ext = ''
 
-            for match in rules.match(entry_path, externals={'filename': entry.name, 'filepath': entry_path, 'extension': ext, 'filetype': entry.type}):
+            try:
+                matches = rules.match(entry_path, externals={'filename': entry.name, 'filepath': entry_path, 'extension': ext, 'filetype': entry.type})
+            except yara.Error as e:
+                self.log('error', "Yara scan for file {} ({}) failed: {}".format(entry.name, entry.sha256, e))
+                continue
+
+            for match in matches:
                 found = True
                 # Add a row for each string matched by the rule.
                 if arg_verbose:
